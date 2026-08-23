@@ -1,0 +1,13 @@
+# IITR GPS-Free UAV Localizer — dependencies
+# pip install -r requirements.txt
+
+torch>=2.0.0
+torchvision>=0.15.0
+transformers>=4.45.0      # EfficientLoFTR (Role 2)
+timm>=0.9.0               # EfficientNet fallback backbone
+faiss-cpu>=1.7.4          # retrieval index  (use faiss-gpu if CUDA available)
+opencv-python>=4.7.0
+Pillow>=9.5.0
+numpy>=1.24.0
+flask>=2.3.0              # web demo
+xformers                  # optional, speeds up DINOv2 — safe to omit

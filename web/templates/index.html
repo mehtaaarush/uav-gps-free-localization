@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IITR · GPS-Free UAV Localizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0e14; --panel:#111722; --panel2:#0d131c; --line:#1e2a3a;
+    --ink:#e6edf3; --mut:#7d8fa3; --acc:#23d18b; --acc2:#2f81f7;
+    --warn:#e3b341; --danger:#f85149; --mono:'IBM Plex Mono',monospace;
+    --disp:'Space Grotesk',sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:var(--disp);
+    min-height:100vh;background-image:
+      linear-gradient(rgba(35,209,139,.025) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(35,209,139,.025) 1px,transparent 1px);
+    background-size:32px 32px}
+  header{display:flex;align-items:center;justify-content:space-between;
+    padding:18px 28px;border-bottom:1px solid var(--line);
+    background:rgba(13,19,28,.8);backdrop-filter:blur(8px);position:sticky;top:0;z-index:10}
+  .brand{display:flex;align-items:center;gap:14px}
+  .logo{width:38px;height:38px;border:2px solid var(--acc);border-radius:9px;
+    display:flex;align-items:center;justify-content:center;font-weight:700;
+    color:var(--acc);font-size:18px;position:relative}
+  .logo::after{content:'';position:absolute;inset:-2px;border:1px solid var(--acc);
+    border-radius:11px;opacity:.3;animation:pulse 2.4s infinite}
+  @keyframes pulse{0%,100%{transform:scale(1);opacity:.3}50%{transform:scale(1.12);opacity:0}}
+  h1{font-size:17px;font-weight:700;letter-spacing:.5px}
+  .sub{font-size:11px;color:var(--mut);font-family:var(--mono);letter-spacing:1px;text-transform:uppercase}
+  .status{display:flex;gap:18px;font-family:var(--mono);font-size:11px}
+  .stat b{color:var(--acc);font-weight:500}
+  .stat span{color:var(--mut)}
+  main{display:grid;grid-template-columns:340px 1fr;gap:0;height:calc(100vh - 75px)}
+  .side{border-right:1px solid var(--line);padding:24px;overflow-y:auto;background:var(--panel2)}
+  .stage{position:relative;overflow:hidden;background:#05080d}
+  .drop{border:1.5px dashed var(--line);border-radius:14px;padding:30px 18px;
+    text-align:center;cursor:pointer;transition:.2s;background:var(--panel)}
+  .drop:hover,.drop.over{border-color:var(--acc);background:rgba(35,209,139,.04)}
+  .drop .ic{font-size:30px;color:var(--acc);margin-bottom:10px}
+  .drop p{font-size:13px;color:var(--mut)}
+  .drop b{color:var(--ink);font-weight:500}
+  .sec{font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--mut);
+    text-transform:uppercase;margin:26px 0 12px;display:flex;align-items:center;gap:8px}
+  .sec::after{content:'';flex:1;height:1px;background:var(--line)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:16px}
+  .preview{width:100%;border-radius:8px;border:1px solid var(--line);display:none;margin-top:14px}
+  .readout{font-family:var(--mono);font-size:12px;line-height:2.1}
+  .readout .k{color:var(--mut)}
+  .readout .v{color:var(--acc);float:right}
+  .big{font-family:var(--mono);font-size:30px;font-weight:500;color:var(--acc);
+    line-height:1;margin:4px 0 2px}
+  .big.dim{color:var(--mut);font-size:14px}
+  .lat{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px}
+  .lat .box{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+  .lat .lbl{font-family:var(--mono);font-size:9px;color:var(--mut);letter-spacing:1px;text-transform:uppercase}
+  .lat .num{font-family:var(--mono);font-size:15px;color:var(--ink);margin-top:3px}
+  .bars{margin-top:6px}
+  .bar{display:flex;align-items:center;gap:10px;margin:7px 0;font-family:var(--mono);font-size:11px}
+  .bar .name{width:74px;color:var(--mut)}
+  .bar .track{flex:1;height:5px;background:var(--panel2);border-radius:3px;overflow:hidden}
+  .bar .fill{height:100%;border-radius:3px;transition:width .4s}
+  .bar .ms{width:50px;text-align:right;color:var(--ink)}
+  .stage img{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    max-width:none;transition:transform .5s ease}
+  .ph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;color:var(--mut);font-family:var(--mono);font-size:13px;gap:14px}
+  .ph .ring{width:60px;height:60px;border:2px solid var(--line);border-top-color:var(--acc);
+    border-radius:50%;animation:spin 1s linear infinite;display:none}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .stage .scanline{position:absolute;left:0;right:0;height:2px;
+    background:linear-gradient(90deg,transparent,var(--acc),transparent);
+    opacity:0;pointer-events:none}
+  .scanline.run{animation:scan 1.1s ease-in-out;opacity:1}
+  @keyframes scan{0%{top:0}100%{top:100%}}
+  .badge{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);
+    font-size:10px;padding:3px 9px;border-radius:20px;border:1px solid var(--line);color:var(--mut)}
+  .badge .dot{width:6px;height:6px;border-radius:50%;background:var(--acc)}
+  .stage-bar{position:absolute;top:0;left:0;right:0;display:flex;gap:12px;
+    padding:12px 18px;background:linear-gradient(180deg,rgba(5,8,13,.9),transparent);
+    z-index:5;font-family:var(--mono);font-size:11px;color:var(--mut)}
+  button.go{width:100%;margin-top:16px;background:var(--acc);color:#04130c;border:none;
+    padding:13px;border-radius:10px;font-family:var(--disp);font-weight:700;font-size:14px;
+    cursor:pointer;transition:.15s;letter-spacing:.3px}
+  button.go:hover{filter:brightness(1.1)}
+  button.go:disabled{opacity:.4;cursor:not-allowed}
+  .samples{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .samples button{flex:1;min-width:60px;background:var(--panel2);border:1px solid var(--line);
+    color:var(--mut);font-family:var(--mono);font-size:11px;padding:8px;border-radius:7px;cursor:pointer}
+  .samples button:hover{border-color:var(--acc2);color:var(--ink)}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="logo">◎</div>
+    <div>
+      <h1>VISION-NAV · IIT ROORKEE</h1>
+      <div class="sub">GPS-denied UAV localization</div>
+    </div>
+  </div>
+  <div class="status">
+    <div class="stat"><span>RETRIEVAL</span> <b id="s-backbone">—</b></div>
+    <div class="stat"><span>MATCHER</span> <b id="s-matcher">—</b></div>
+    <div class="stat"><span>TILES</span> <b id="s-tiles">—</b></div>
+    <div class="stat"><span>STATUS</span> <b id="s-status">BOOTING</b></div>
+  </div>
+</header>
+
+<main>
+  <aside class="side">
+    <div class="sec">query input</div>
+    <div class="drop" id="drop">
+      <div class="ic">⤓</div>
+      <p><b>Drop a UAV frame</b><br>or click to browse</p>
+    </div>
+    <img id="preview" class="preview" alt="query preview">
+    <div class="samples" id="samples"></div>
+    <button class="go" id="go" disabled>◎ LOCALIZE</button>
+
+    <div class="sec">position fix</div>
+    <div class="card">
+      <div style="font-family:var(--mono);font-size:9px;color:var(--mut);letter-spacing:1px">MAP COORDINATES (PX)</div>
+      <div class="big" id="r-xy">— , —</div>
+      <div class="lat">
+        <div class="box"><div class="lbl">latitude</div><div class="num" id="r-lat">—</div></div>
+        <div class="box"><div class="lbl">longitude</div><div class="num" id="r-lon">—</div></div>
+      </div>
+    </div>
+
+    <div class="sec">confidence</div>
+    <div class="card readout">
+      <div><span class="k">match score</span><span class="v" id="r-conf">—</span></div>
+      <div><span class="k">RANSAC inliers</span><span class="v" id="r-inl">—</span></div>
+    </div>
+
+    <div class="sec">latency</div>
+    <div class="card bars" id="bars">
+      <div class="bar"><span class="name">retrieval</span><div class="track"><div class="fill" style="background:var(--acc2)" id="b-ret"></div></div><span class="ms" id="m-ret">—</span></div>
+      <div class="bar"><span class="name">faiss</span><div class="track"><div class="fill" style="background:var(--acc)" id="b-srch"></div></div><span class="ms" id="m-srch">—</span></div>
+      <div class="bar"><span class="name">matcher</span><div class="track"><div class="fill" style="background:var(--warn)" id="b-mat"></div></div><span class="ms" id="m-mat">—</span></div>
+      <div class="bar"><span class="name">total</span><div class="track"><div class="fill" style="background:var(--ink)" id="b-tot"></div></div><span class="ms" id="m-tot">—</span></div>
+    </div>
+  </aside>
+
+  <section class="stage" id="stage">
+    <div class="stage-bar">
+      <span id="sb-msg">awaiting query…</span>
+      <span style="margin-left:auto" class="badge"><span class="dot"></span> <span id="sb-mode">LIVE</span></span>
+    </div>
+    <div class="scanline" id="scan"></div>
+    <div class="ph" id="ph">
+      <div class="ring" id="ring"></div>
+      <div id="ph-txt">loading satellite map…</div>
+    </div>
+    <img id="mapimg" style="display:none">
+  </section>
+</main>
+
+<script>
+let MAP=null, FILE=null;
+const $=id=>document.getElementById(id);
+
+async function boot(){
+  const r=await fetch('/map'); const d=await r.json();
+  MAP=d;
+  $('s-backbone').textContent=d.backbone;
+  $('s-matcher').textContent=d.matcher;
+  $('s-tiles').textContent=d.tiles.toLocaleString();
+  $('s-status').textContent='READY';
+  const img=$('mapimg'); img.src=d.map;
+  img.onload=()=>{ fitMap(); img.style.display='block'; $('ph').style.display='none'; };
+  buildSamples();
+}
+function fitMap(){
+  const st=$('stage'), img=$('mapimg');
+  const sx=st.clientWidth/MAP.width, sy=st.clientHeight/MAP.height;
+  img.dataset.scale=Math.min(sx,sy);
+  img.style.transform=`translate(-50%,-50%) scale(${img.dataset.scale})`;
+}
+window.addEventListener('resize',()=>{ if(MAP&&!$('mapimg').dataset.zoom) fitMap(); });
+
+function buildSamples(){
+  const wrap=$('samples'); wrap.innerHTML='';
+  for(let i=0;i<4;i++){
+    const b=document.createElement('button');
+    b.textContent='SAMPLE '+(i+1);
+    b.onclick=()=>loadSample(i);
+    wrap.appendChild(b);
+  }
+}
+async function loadSample(i){
+  const name=`query_${String(i).padStart(3,'0')}.png`;
+  const r=await fetch('/static/samples/'+name);
+  if(!r.ok){ $('sb-msg').textContent='run simulate.py to create samples'; return; }
+  FILE=new File([await r.blob()],name,{type:'image/png'});
+  showPreview(FILE);
+}
+
+const drop=$('drop');
+drop.onclick=()=>{ const i=document.createElement('input'); i.type='file'; i.accept='image/*';
+  i.onchange=e=>{ FILE=e.target.files[0]; showPreview(FILE); }; i.click(); };
+['dragover','dragenter'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('over');}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over');}));
+drop.addEventListener('drop',e=>{ FILE=e.dataTransfer.files[0]; showPreview(FILE); });
+
+function showPreview(f){
+  const url=URL.createObjectURL(f);
+  const p=$('preview'); p.src=url; p.style.display='block';
+  $('go').disabled=false;
+  $('sb-msg').textContent='query loaded · '+f.name;
+}
+
+$('go').onclick=async()=>{
+  if(!FILE) return;
+  $('go').disabled=true;
+  $('scan').classList.add('run');
+  $('sb-msg').textContent='running DINOv2 → FAISS → EfficientLoFTR…';
+  const fd=new FormData(); fd.append('image',FILE);
+  const t0=performance.now();
+  const r=await fetch('/locate',{method:'POST',body:fd});
+  const d=await r.json();
+  $('scan').classList.remove('run');
+  if(d.error){ $('sb-msg').textContent='error: '+d.error; $('go').disabled=false; return; }
+  render(d, performance.now()-t0);
+  $('go').disabled=false;
+};
+
+function render(d,rtt){
+  $('r-xy').textContent=`${d.pixel_x} , ${d.pixel_y}`;
+  $('r-lat').textContent=d.lat.toFixed(6);
+  $('r-lon').textContent=d.lon.toFixed(6);
+  $('r-conf').textContent=d.confidence.toFixed(3);
+  $('r-inl').textContent=d.inliers;
+  const t=d.timing, mx=Math.max(t.retrieval_ms,t.search_ms,t.match_ms||0,1);
+  $('m-ret').textContent=t.retrieval_ms+'ms'; $('b-ret').style.width=(t.retrieval_ms/t.total_ms*100)+'%';
+  $('m-srch').textContent=t.search_ms+'ms';   $('b-srch').style.width=(t.search_ms/t.total_ms*100)+'%';
+  $('m-mat').textContent=(t.match_ms||0)+'ms';$('b-mat').style.width=((t.match_ms||0)/t.total_ms*100)+'%';
+  $('m-tot').textContent=t.total_ms+'ms';     $('b-tot').style.width='100%';
+  $('mapimg').src=d.annotated_map;
+  $('sb-msg').textContent=`FIX ACQUIRED · ${t.total_ms}ms server · ${Math.round(rtt)}ms round-trip`;
+  // zoom toward the estimate
+  const img=$('mapimg'); img.dataset.zoom=1;
+  const sc=parseFloat(img.dataset.scale)*2.4;
+  const st=$('stage');
+  const ox=(MAP.width/2 - d.pixel_x)*sc, oy=(MAP.height/2 - d.pixel_y)*sc;
+  img.style.transform=`translate(calc(-50% + ${ox}px),calc(-50% + ${oy}px)) scale(${sc})`;
+}
+
+boot();
+</script>
+</body>
+</html>
