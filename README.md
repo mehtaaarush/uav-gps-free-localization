@@ -17,6 +17,10 @@ two best-in-class transformer models for the job:
 If a model can't be downloaded (offline machine), the code automatically falls
 back (EfficientNet-B0 for retrieval, ORB for matching) so the pipeline always runs.
 
+**Live demo: [mehtaaarush.github.io/uav-gps-free-localization](https://mehtaaarush.github.io/uav-gps-free-localization/)**
+
+The retrieval and refinement run entirely in the browser: DINOv2 ViT-S/14 exported to ONNX with int8 weights (ONNX Runtime Web) shortlists eight of 1,251 map tiles, then ORB features with a RANSAC homography (OpenCV.js) pin the frame to the map, and A* plans a route over 33 campus landmarks. On the 20 test frames the median error is 2.9 m, with 19 of 20 inside 25 m. `scripts/export_web_demo.py` builds everything in `docs/`. The browser uses ORB, the pipeline's built-in fallback, because EfficientLoFTR is too heavy to ship to a web page.
+
 ---
 
 ## Architecture

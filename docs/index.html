@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vision-Nav: locate a drone without GPS, in your browser</title>
+  <meta name="description" content="A live demo of GPS-free drone localisation over the IIT Roorkee campus: DINOv2 retrieval and ORB with RANSAC matching run in the browser, then A* plans a route through campus landmarks.">
+  <meta name="author" content="Aarush Mehta">
+  <meta name="theme-color" content="#173a6e">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23173a6e'/%3E%3Cpath d='M16 5v22M5 16h22' stroke='%23f4f7fb' stroke-width='2'/%3E%3Crect x='10' y='10' width='12' height='12' fill='none' stroke='%23f4f7fb' stroke-width='2'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@500&display=swap">
+  <link rel="stylesheet" href="assets/app.css">
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js" defer></script>
+  <script src="assets/app.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the demo</a>
+
+<header class="bar">
+  <div class="container bar-inner">
+    <a class="wordmark" href="#main" aria-label="Vision-Nav, top of the page">Vision-Nav</a>
+    <nav aria-label="Page">
+      <ul class="links">
+        <li><a href="#locate">Locate</a></li>
+        <li><a href="#route">Route</a></li>
+        <li><a href="#register">Test frames</a></li>
+        <li><a href="#method">Method</a></li>
+        <li><a href="https://github.com/mehtaaarush/uav-gps-free-localization">Code</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="container">
+  <section class="head" aria-labelledby="title">
+    <h1 id="title">Locate a drone without GPS</h1>
+    <p class="lead">Pick a camera frame. DINOv2 shortlists eight satellite tiles, then ORB and RANSAC pin the frame to the map, all inside your browser.</p>
+  </section>
+
+  <section class="bench" id="locate" aria-label="Localise a frame">
+    <div class="panel">
+      <h2 class="panel-title">Camera frame</h2>
+      <div class="frame-pick">
+        <figure class="fig query"><canvas id="query" width="180" height="180" aria-label="The selected drone camera frame"></canvas></figure>
+        <div class="frame-meta">
+          <p class="num" id="frame-name">query_000.png</p>
+          <p class="muted" id="frame-note">Simulated drone frame, ground truth known</p>
+          <label class="btn btn--line upload">Use your own image<input type="file" id="upload" accept="image/*"></label>
+        </div>
+      </div>
+      <div class="thumbs" id="thumbs" role="listbox" aria-label="Test frames"></div>
+      <button class="btn btn--primary" type="button" id="run" disabled>Loading the model</button>
+      <div class="progress" id="progress" aria-live="polite">
+        <p id="load-note">Fetching DINOv2, 25 MB, and OpenCV, 13 MB. Cached after the first visit.</p>
+        <div class="meter" aria-hidden="true"><span id="meter"></span></div>
+      </div>
+      <div class="notice" id="error" role="alert" hidden>
+        <p id="error-text">The model did not load.</p>
+        <button class="btn btn--line" type="button" id="retry">Try again</button>
+      </div>
+      <dl class="readout" id="readout" aria-live="polite">
+        <div><dt>Map position</dt><dd class="num" id="r-px">waiting</dd></div>
+        <div><dt>Latitude, longitude</dt><dd class="num" id="r-gps">waiting</dd></div>
+        <div><dt>Error against truth</dt><dd class="num" id="r-err">waiting</dd></div>
+        <div><dt>RANSAC inliers</dt><dd class="num" id="r-inl">waiting</dd></div>
+        <div><dt>Time in this browser</dt><dd class="num" id="r-ms">waiting</dd></div>
+      </dl>
+    </div>
+
+    <div class="sheet-wrap">
+      <figure class="fig sheet" id="sheet">
+        <canvas id="map" width="1498" height="704" aria-label="Satellite map of the IIT Roorkee campus with the localisation drawn on it"></canvas>
+        <figcaption>
+          <span>IIT Roorkee campus, satellite map, 1498 by 704 px</span>
+          <span class="num" id="cursor"></span>
+        </figcaption>
+      </figure>
+      <div class="dim" aria-hidden="true"><span class="dim-line"></span><span class="num" id="dim-label">1,448 m</span></div>
+      <fieldset class="layers">
+        <legend>Layers</legend>
+        <label><input type="checkbox" id="l-cand" checked> Eight candidates</label>
+        <label><input type="checkbox" id="l-land"> Landmarks</label>
+        <label><input type="checkbox" id="l-route" checked> Route</label>
+        <label><input type="checkbox" id="l-colour"> True colour</label>
+      </fieldset>
+    </div>
+  </section>
+
+  <section class="block" aria-labelledby="h-match">
+    <h2 id="h-match">The match that won</h2>
+    <p class="deck">The frame on the left, the winning map tile on the right, joined by the feature matches RANSAC kept.</p>
+    <figure class="fig matches"><canvas id="matches" width="1000" height="420" aria-label="Inlier feature matches between the frame and the winning tile"></canvas></figure>
+  </section>
+
+  <section class="block" id="route" aria-labelledby="h-route">
+    <h2 id="h-route">Plan a route over landmarks</h2>
+    <p class="deck">A* runs over a graph of 33 campus landmarks, linked when they are within 320 px. The route starts from the fix above; click the map to set a target.</p>
+    <div class="route-grid">
+      <fieldset class="mode">
+        <legend>Clicking the map sets</legend>
+        <label><input type="radio" name="mode" value="target" checked> The target</label>
+        <label><input type="radio" name="mode" value="start"> The start</label>
+      </fieldset>
+      <div class="table-wrap">
+        <table class="register" id="t-route">
+          <caption class="visually-hidden">Route waypoints</caption>
+          <thead><tr><th scope="col">Leg</th><th scope="col">Waypoint</th><th scope="col">Kind</th><th scope="col" class="n">Leg length</th></tr></thead>
+          <tbody><tr><td colspan="4" class="muted">Click the map to set a target.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="register" aria-labelledby="h-register">
+    <h2 id="h-register">All twenty test frames</h2>
+    <p class="deck" id="d-register">Error in metres for retrieval alone, after re-ranking in Python, and after re-ranking here.</p>
+    <button class="btn btn--line" type="button" id="run-all" disabled>Run all twenty here</button>
+    <div class="table-wrap">
+      <table class="register" id="t-eval">
+        <caption class="visually-hidden">Localisation error per test frame</caption>
+        <thead><tr><th scope="col">Frame</th><th scope="col" class="n">Retrieval only</th><th scope="col" class="n">Re-ranked, Python</th><th scope="col" class="n">Re-ranked, this browser</th><th scope="col" class="n">Inliers</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="block method" id="method" aria-labelledby="h-method">
+    <h2 id="h-method">Method</h2>
+    <ol class="steps">
+      <li><h3>Index the map once</h3><p>The satellite map is cut into 1,251 overlapping tiles at 160, 224 and 288 px with a 32 px stride, and each tile is embedded with DINOv2 ViT-S/14. The embeddings ship as a 480 KB file.</p></li>
+      <li><h3>Retrieve</h3><p>The frame is resized to 154 px and embedded by the same network, exported to ONNX with int8 weights and run by ONNX Runtime Web. Cosine similarity picks the eight nearest tiles.</p></li>
+      <li><h3>Re-rank and refine</h3><p>Each candidate tile is matched to the frame with ORB features and a brute-force Hamming matcher; a RANSAC homography counts inliers and projects the frame centre onto the map. The most inliers wins.</p></li>
+      <li><h3>Plan</h3><p>A* searches the landmark graph from the fix to the target, with straight-line distance as the heuristic.</p></li>
+    </ol>
+    <p class="note">The full pipeline in the repository re-ranks with EfficientLoFTR, a dense transformer matcher too heavy for a browser; ORB is its built-in fallback and the one used here. The test frames are crops of the map with simulated drone rotation, tilt, blur and colour shift, so they measure the method, not a real flight. Latitude and longitude come from the map’s corner coordinates.</p>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="container foot-inner">
+    <p>Aarush Mehta. Built during my internship at IIT Roorkee, summer 2026.</p>
+    <ul>
+      <li><a href="https://aarushmehta.vercel.app">Portfolio</a></li>
+      <li><a href="https://github.com/mehtaaarush/uav-gps-free-localization">Source code</a></li>
+    </ul>
+  </div>
+</footer>
+<noscript><p class="container notice">This demo runs a neural network and OpenCV in the browser, so it needs JavaScript.</p></noscript>
+</body>
+</html>
